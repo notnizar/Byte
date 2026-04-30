@@ -2,3 +2,5 @@
 cleaned.json
 output.html
 listing_html/
+__pycache__/
+*.pyc
