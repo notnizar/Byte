@@ -21,9 +21,7 @@ FIELDS = [
     "Published Date",
 ]
 
-SCAN_KEY = "Scan"
 DESCRIPTION_KEY = "Description"
-SCAN_TOKENS = {"\u0641\u062d\u0635", "\u0627\u0644\u0641\u062d\u0635"}
 
 
 def extract_pairs(html: str) -> Dict[str, str]:
@@ -85,31 +83,6 @@ def extract_description(html: str) -> str:
     return ""
 
 
-def extract_scan(description: str) -> str:
-    if not description:
-        return ""
-    text = clean_text(description)
-    if not text:
-        return ""
-    text = re.sub(r"[\.:;,\-\u060c\u061b]", " ", text)
-    text = re.sub(r"(\d)(\D)", r"\1 \2", text)
-    text = re.sub(r"(\D)(\d)", r"\1 \2", text)
-    tokens = [token for token in text.split() if token]
-    for index, token in enumerate(tokens):
-        if token in SCAN_TOKENS:
-            after = tokens[index + 1 : index + 4]
-            if not after:
-                return ""
-            if not any(_contains_digit(value) for value in after):
-                extended = tokens[index + 1 : index + 7]
-                if any(_contains_digit(value) for value in extended):
-                    after = extended[:3]
-                else:
-                    return ""
-            return " ".join(after)
-    return ""
-
-
 def extract_fields(html: str) -> Dict[str, str]:
     pairs = extract_pairs(html)
     data = {field: pairs.get(field, "") for field in FIELDS}
@@ -126,12 +99,5 @@ def extract_fields(html: str) -> Dict[str, str]:
     description = extract_description(html)
     if description:
         data[DESCRIPTION_KEY] = description
-    scan_value = extract_scan(description)
-    if scan_value:
-        data[SCAN_KEY] = scan_value
 
     return data
-
-
-def _contains_digit(value: str) -> bool:
-    return any(char.isdigit() for char in value)
