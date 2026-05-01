@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import sys
+import time
 from typing import Any, Dict
 
 import requests
@@ -19,12 +20,16 @@ class ZyteFetcherAdapter(CarFetcherPort):
         timeout: int = 60,
         browser_html: bool = True,
         follow_redirect: bool = False,
+        max_retries: int = 3,
+        retry_backoff: float = 2.0,
     ) -> None:
         _load_env_file(".env")
         self.api_key = api_key or os.getenv("ZYTE_API_KEY", "")
         self.timeout = timeout
         self.browser_html = browser_html
         self.follow_redirect = follow_redirect
+        self.max_retries = max_retries
+        self.retry_backoff = retry_backoff
 
     def fetch_listing_page_html(self, url: str) -> str:
         return self._fetch_html(url)
@@ -42,12 +47,22 @@ class ZyteFetcherAdapter(CarFetcherPort):
             http_response_body=not self.browser_html,
             follow_redirect=self.follow_redirect,
         )
-        response = requests.post(
-            ZYTE_API_URL,
-            auth=(self.api_key, ""),
-            json=payload,
-            timeout=self.timeout,
-        )
+        response = None
+        for attempt in range(self.max_retries + 1):
+            response = requests.post(
+                ZYTE_API_URL,
+                auth=(self.api_key, ""),
+                json=payload,
+                timeout=self.timeout,
+            )
+            if response.status_code not in {429, 503, 504}:
+                break
+            if attempt >= self.max_retries:
+                break
+            _sleep_before_retry(response, attempt, self.retry_backoff)
+
+        if response is None:
+            raise RuntimeError("Zyte request failed to initialize.")
         response.raise_for_status()
         data = response.json()
 
@@ -93,3 +108,15 @@ def _load_env_file(path: str) -> None:
                     os.environ[key] = value
     except OSError as exc:
         print(f"Failed to read .env file: {exc}", file=sys.stderr)
+
+
+def _sleep_before_retry(response: requests.Response, attempt: int, backoff: float) -> None:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            delay = max(0.0, float(retry_after))
+        except ValueError:
+            delay = backoff * (2**attempt)
+    else:
+        delay = backoff * (2**attempt)
+    time.sleep(delay)
