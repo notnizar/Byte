@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from app.workflows.pipeline import run_pipeline
 
@@ -21,19 +22,14 @@ def parse_args() -> argparse.Namespace:
         help="Limit number of listings to process.",
     )
     parser.add_argument(
-        "--no-scan-llm",
-        action="store_true",
-        help="Disable Ollama LLM scan extraction and use parser fallback only.",
+        "--gemini-api-key",
+        default=os.getenv("GEMINI_API_KEY", ""),
+        help="Gemini API key (defaults to GEMINI_API_KEY environment variable).",
     )
     parser.add_argument(
-        "--ollama-model",
-        default="llama3.1:8b",
-        help="Ollama model name for scan extraction (default: llama3.1:8b).",
-    )
-    parser.add_argument(
-        "--ollama-url",
-        default="http://127.0.0.1:11434",
-        help="Ollama base URL (default: http://127.0.0.1:11434).",
+        "--gemini-model",
+        default="gemini-3.1-flash-lite-preview",
+        help="Gemini model name (default: gemini-3.1-flash-lite-preview).",
     )
     return parser.parse_args()
 
@@ -44,9 +40,8 @@ def main() -> int:
         args.start_url,
         args.output,
         args.limit,
-        use_scan_llm=not args.no_scan_llm,
-        ollama_model=args.ollama_model,
-        ollama_base_url=args.ollama_url,
+        gemini_api_key=args.gemini_api_key,
+        gemini_model=args.gemini_model,
     )
     print(f"Saved {saved} listings to {args.output}")
     return 0

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from app.core.entities.car import Car
 from app.core.ports.car_fetcher_port import CarFetcherPort
 from app.core.ports.car_repository_port import CarRepositoryPort
 from app.core.ports.scan_extractor_port import ScanExtractorPort
 from app.core.ports.url_resolver_port import UrlResolverPort
+from app.core.parsers.common import clean_text
 
 from app.core.parsers.listing_parser import extract_fields
 from app.core.parsers.search_parser import parse_listings
@@ -45,18 +46,21 @@ class ScraperService:
                 continue
 
             description = detail_fields.get("Description", "")
-            if self.scan_extractor and description:
+            analysis_text = description if description.strip() else clean_text(detail_html)
+            condition = str(detail_fields.get("Condition", "")).strip().lower()
+            if self.scan_extractor and analysis_text and condition == "used":
                 try:
-                    llm_scan = self.scan_extractor.extract_scan(description)
-                    if llm_scan:
-                        detail_fields["Scan"] = llm_scan
+                    analysis = self.scan_extractor.analyze_description(analysis_text)
+                    _merge_analysis(detail_fields, analysis)
                 except Exception:
-                    # Keep scraping working even if LLM endpoint is unavailable.
+                    # Keep scraping working even if Gemini is unavailable.
                     pass
 
             data = _normalize_details(detail_fields)
             if not data.get("price") and listing.get("price"):
                 data["price"] = listing["price"]
+            if listing.get("url"):
+                data["url"] = listing["url"]
             car = Car(data=data)
             self.repository.save(car)
             saved += 1
@@ -64,7 +68,7 @@ class ScraperService:
         return saved
 
 
-def _normalize_details(details: Dict[str, str]) -> Dict[str, str]:
+def _normalize_details(details: Dict[str, Any]) -> Dict[str, Any]:
     allowed = {
         "price",
         "Car Make",
@@ -78,6 +82,27 @@ def _normalize_details(details: Dict[str, str]) -> Dict[str, str]:
         "Condition",
         "Kilometers",
         "Published Date",
-        "Scan",
+        "url",
+        "chassis_score",
+        "front_left",
+        "front_right",
+        "rear_left",
+        "rear_right",
+        "used_in_apps",
     }
-    return {key: value for key, value in details.items() if value and key in allowed}
+    return {key: value for key, value in details.items() if key in allowed and value is not None and value != ""}
+
+
+def _merge_analysis(details: Dict[str, Any], analysis: Dict[str, Any]) -> None:
+    field_map = {
+        "chassis_score": "chassis_score",
+        "front_left": "front_left",
+        "front_right": "front_right",
+        "rear_left": "rear_left",
+        "rear_right": "rear_right",
+        "used_in_apps": "used_in_apps",
+    }
+    for source_key, target_key in field_map.items():
+        value = analysis.get(source_key)
+        if value is not None and value != "":
+            details[target_key] = value
