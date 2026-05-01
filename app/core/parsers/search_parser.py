@@ -1,16 +1,9 @@
 from __future__ import annotations
 
 import re
-from html import unescape
 from typing import Dict, List
 
-
-def strip_tags(text: str) -> str:
-    return re.sub(r"<[^>]+>", "", text)
-
-
-def clean_text(text: str) -> str:
-    return unescape(strip_tags(text)).strip()
+from app.core.parsers.common import clean_text
 
 
 def parse_price(price_text: str) -> Dict[str, str]:
@@ -29,13 +22,7 @@ def parse_listings(html: str, base_url: str) -> List[Dict[str, str]]:
     for index, match in enumerate(pattern.finditer(html), start=1):
         item = match.group(0)
         href_match = re.search(r'href="([^"]+)"', item)
-        title_match = re.search(r"<h2[^>]*>(.*?)</h2>", item, re.DOTALL)
         price_match = re.search(r'<div class="redColor bold font-18">(.*?)</div>', item, re.DOTALL)
-        location_match = re.search(
-            r'<div class="flex alignItems font-13 bold">.*?<span[^>]*>(.*?)</span>',
-            item,
-            re.DOTALL,
-        )
 
         listing_id = str(index)
 
@@ -44,9 +31,6 @@ def parse_listings(html: str, base_url: str) -> List[Dict[str, str]]:
             href = href_match.group(1)
             url = href if href.startswith("http") else f"{base_url_clean}{href}" if base_url_clean else href
 
-        title = clean_text(title_match.group(1)) if title_match else ""
-        location = clean_text(location_match.group(1)) if location_match else ""
-
         price_info = {"price": "", "currency": "", "price_raw": ""}
         if price_match:
             price_info = parse_price(price_match.group(1))
@@ -54,10 +38,8 @@ def parse_listings(html: str, base_url: str) -> List[Dict[str, str]]:
         listings.append(
             {
                 "id": listing_id,
-                "title": title,
                 "price": price_info["price"],
                 "currency": price_info["currency"],
-                "location": location,
                 "url": url,
             }
         )
